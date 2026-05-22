@@ -12,6 +12,8 @@
 | Backend API | Railway | [web-production-a02859.up.railway.app](https://web-production-a02859.up.railway.app) |
 | API Docs | Railway | [/docs](https://web-production-a02859.up.railway.app/docs) |
 
+![PyCodingAgent UI](docs/screenshot.png)
+
 ### Try It Live
 
 Open [python-coding-agent.vercel.app](https://python-coding-agent.vercel.app) and type any of these prompts:
