@@ -1,7 +1,9 @@
 import asyncio
 import json
 import time
+from collections.abc import Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 import aiofiles
 from agents import Runner
@@ -15,6 +17,8 @@ from lib.llm_client import configure_sdk
 
 OUTPUT_DIR = Path("generated-projects")
 MAX_RETRIES = 2
+
+EventCallback = Callable[[str, dict[str, Any] | None], Awaitable[None]]
 
 
 def _log(step: str, message: str) -> None:
@@ -59,18 +63,33 @@ async def _write_files(project_dir: Path, coder_output: CoderOutput) -> list[str
     return written
 
 
-async def run_pipeline(user_prompt: str) -> Path:
+async def run_pipeline(
+    user_prompt: str,
+    on_event: EventCallback | None = None,
+) -> Path:
+    async def emit(event: str, data: dict[str, Any] | None = None) -> None:
+        if on_event is not None:
+            await on_event(event, data)
+
     configure_sdk()
 
     # ── Planner ───────────────────────────────────────────────────────────────
+    await emit("planner_start")
     _log("Planner", "Analyzing requirements...")
     plan: PlannerOutput = await _run_agent_with_retry(
         create_planner_agent(), user_prompt, "Planner"
     )
     _log("Planner", f"Project: {plan.projectName} ({plan.projectType}, Python {plan.pythonVersion})")
     _log("Planner", f"Features: {', '.join(plan.features)}")
+    await emit("planner_done", {
+        "projectName": plan.projectName,
+        "projectType": plan.projectType,
+        "features": plan.features,
+        "description": plan.description,
+    })
 
     # ── Architect ─────────────────────────────────────────────────────────────
+    await emit("architect_start")
     _log("Architect", "Designing file structure...")
     architecture: ArchitectOutput = await _run_agent_with_retry(
         create_architect_agent(),
@@ -80,8 +99,12 @@ async def run_pipeline(user_prompt: str) -> Path:
     _log("Architect", f"Files to generate: {len(architecture.files)}")
     for f in architecture.files:
         _log("Architect", f"  {f.path} — {f.purpose}")
+    await emit("architect_done", {
+        "files": [{"path": f.path, "purpose": f.purpose} for f in architecture.files],
+    })
 
     # ── Coder ─────────────────────────────────────────────────────────────────
+    await emit("coder_start")
     _log("Coder", "Generating source code...")
     code: CoderOutput = await _run_agent_with_retry(
         create_coder_agent(),
@@ -95,6 +118,9 @@ async def run_pipeline(user_prompt: str) -> Path:
     project_dir.mkdir(parents=True, exist_ok=True)
     written = await _write_files(project_dir, code)
 
+    for path in written:
+        await emit("coder_file", {"file": path})
+
     _log("Done", f"Project written to: {project_dir}")
     _log("Done", f"  {len(written)} files created")
 
@@ -107,5 +133,11 @@ async def run_pipeline(user_prompt: str) -> Path:
     }
     async with aiofiles.open(project_dir / ".manifest.json", "w") as fh:
         await fh.write(json.dumps(manifest, indent=2))
+
+    await emit("done", {
+        "projectName": plan.projectName,
+        "totalFiles": len(written),
+        "filesGenerated": written,
+    })
 
     return project_dir
