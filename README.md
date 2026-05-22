@@ -1,13 +1,22 @@
 # PyCodingAgent
 
-An AI-powered assistant that converts natural language prompts into complete, production-ready Python projects using a pipeline of specialized agents.
+An AI-powered assistant that converts natural language prompts into complete, production-ready Python projects using a pipeline of specialized agents — with a real-time chat UI and streaming progress updates.
+
+---
+
+## Live Demo
+
+| Layer | Platform | URL |
+|---|---|---|
+| Frontend (Next.js) | Vercel | *(your Vercel URL)* |
+| Backend (FastAPI) | Railway | *(your Railway URL)* |
 
 ---
 
 ## How It Works
 
 ```
-User Prompt
+User Prompt  (via Chat UI or CLI)
      ↓
 InputGuardrail        ← blocks non-Python, vague, or dangerous prompts
      ↓
@@ -22,6 +31,8 @@ OutputGuardrail       ← rejects dangerous patterns + validates pyproject.toml
 generated-projects/<name>/
 ```
 
+Progress streams live to the UI via **Server-Sent Events (SSE)**.
+
 ---
 
 ## Example
@@ -32,7 +43,7 @@ Build a FastAPI REST API for a todo list with add, complete, and delete endpoint
 ```
 
 **Output:** A complete Python project in `generated-projects/todo_api/` with:
-- `pyproject.toml` — with ruff, mypy, pytest, hatchling config
+- `pyproject.toml` — ruff, mypy, pytest, hatchling config
 - `main.py` — FastAPI app entry point
 - `src/todo_api/routes/todos.py` — typed route handlers
 - `src/todo_api/models.py` — Pydantic models
@@ -64,15 +75,19 @@ Build a FastAPI REST API for a todo list with add, complete, and delete endpoint
 - [Gemini API](https://ai.google.dev/) — LLM via OpenAI-compatible endpoint
 - [OpenAI API](https://platform.openai.com/) — tracing only
 
-### Generated Project Stack
-- Python 3.12+
-- [Pydantic v2](https://docs.pydantic.dev/) — data models & validation
-- [FastAPI](https://fastapi.tiangolo.com/) / [Flask](https://flask.palletsprojects.com/) / [Django](https://www.djangoproject.com/)
-- [httpx](https://www.python-httpx.org/) — async HTTP
-- [pytest](https://pytest.org/) — testing
-- [ruff](https://docs.astral.sh/ruff/) — linting + formatting
-- [mypy](https://mypy.readthedocs.io/) — type checking
+### Backend
+- [FastAPI](https://fastapi.tiangolo.com/) — REST API + SSE streaming
+- [uvicorn](https://www.uvicorn.org/) — ASGI server
 - [uv](https://docs.astral.sh/uv/) — package manager
+
+### Frontend
+- [Next.js 15](https://nextjs.org/) — App Router, React 19
+- [Tailwind CSS](https://tailwindcss.com/) — utility-first styling
+- [Manrope](https://fonts.google.com/specimen/Manrope) + [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono) — typography
+
+### Generated Project Stack
+- Python 3.12+, Pydantic v2, FastAPI / Flask / Django
+- pytest, ruff, mypy, httpx, uv
 
 ---
 
@@ -81,36 +96,62 @@ Build a FastAPI REST API for a todo list with add, complete, and delete endpoint
 ```
 coding-assistant/
 │
+├── api/                           # FastAPI backend
+│   ├── main.py                    # App entrypoint, CORS, routers
+│   ├── job_store.py               # In-memory job store (asyncio.Queue)
+│   ├── schemas.py                 # Pydantic request/response models
+│   └── routes/
+│       ├── generate.py            # POST /api/generate + SSE stream
+│       └── projects.py            # GET project files
+│
 ├── pipeline/
-│   ├── planner_agent.py       # Analyzes prompt → structured plan
-│   ├── architect_agent.py     # Plan → file structure
-│   ├── coder_agent.py         # Architecture → source code
-│   └── guardrails.py          # Input + output safety checks
+│   ├── planner_agent.py           # Analyzes prompt → structured plan
+│   ├── architect_agent.py         # Plan → file structure
+│   ├── coder_agent.py             # Architecture → source code
+│   └── guardrails.py              # Input + output safety checks
 │
 ├── lib/
-│   ├── llm_client.py          # Gemini client configuration
-│   └── orchestrator.py        # Chains agents, writes files
+│   ├── llm_client.py              # Gemini client configuration
+│   └── orchestrator.py            # Chains agents, writes files, emits SSE events
 │
 ├── models/
-│   └── models.py              # Pydantic models (PlannerOutput, etc.)
+│   └── models.py                  # Pydantic models (PlannerOutput, etc.)
 │
-├── generated-projects/        # All generated projects land here
+├── ui/                            # Next.js frontend
+│   ├── app/
+│   │   ├── layout.tsx             # Fonts, ambient orb background
+│   │   ├── page.tsx               # Root page
+│   │   └── globals.css            # Glass utilities, animations
+│   ├── components/
+│   │   ├── ChatShell.tsx          # Main layout, SSE orchestration
+│   │   ├── MessageList.tsx        # Chat history + empty state
+│   │   ├── MessageBubble.tsx      # User/assistant message bubbles
+│   │   ├── AgentProgress.tsx      # Pipeline step indicators
+│   │   ├── PromptInput.tsx        # Textarea + submit button
+│   │   ├── FileTree.tsx           # Generated project file list
+│   │   └── CodeViewer.tsx         # Syntax-highlighted code panel
+│   ├── lib/
+│   │   ├── api.ts                 # API client (startGenerate, getProjectFile)
+│   │   └── sse.ts                 # EventSource wrapper
+│   └── types/index.ts             # Shared TypeScript types
 │
-├── main.py                    # CLI entry point
-├── test_agents.py             # Agent output testing (no file writes)
+├── generated-projects/            # All generated projects land here
+├── main.py                        # CLI entry point
+├── test_agents.py                 # Agent output tests (no file writes)
+├── Procfile                       # Railway deploy command
 ├── pyproject.toml
-└── .env                       # API keys (not committed)
+└── .env                           # API keys (not committed)
 ```
 
 ---
 
-## Setup
+## Local Setup
 
 ### 1. Clone and install
 
 ```bash
-git clone <repo-url>
-cd pycodingagent
+git clone https://github.com/EngrHuzi/Python-Coding-Agent.git
+cd Python-Coding-Agent
 uv sync
 ```
 
@@ -130,36 +171,102 @@ OPENAI_API_KEY=your_openai_api_key_here   # for tracing only
 
 Get your Gemini API key at [aistudio.google.com](https://aistudio.google.com/apikey).
 
-### 3. Run
+### 3. Run the backend
+
+```bash
+uvicorn api.main:app --reload --port 8000
+```
+
+### 4. Run the frontend
+
+```bash
+cd ui
+npm install
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+### 5. Or use the CLI directly
 
 ```bash
 uv run python main.py "Build a CLI tool that converts CSV files to JSON"
 ```
 
-Or using the installed CLI command:
+---
 
-```bash
-pycodingagent "Build a CLI tool that converts CSV files to JSON"
+## Deployment
+
+### Frontend → Vercel
+
+1. Import the GitHub repo in [vercel.com](https://vercel.com)
+2. Set **Root Directory** to `ui`
+3. Add environment variable:
+   ```
+   NEXT_PUBLIC_API_URL=https://your-backend.up.railway.app
+   ```
+
+### Backend → Railway
+
+1. Create new project at [railway.app](https://railway.app) from this GitHub repo
+2. Add environment variables:
+   ```
+   GEMINI_API_KEY=your_key
+   MODEL_NAME=gemini-2.0-flash-lite
+   ```
+3. Railway uses the `Procfile` to start the server automatically.
+
+### CI — GitHub Actions
+
+Tests run automatically on every push to `main`:
+- Backend: `pytest test_agents.py`
+- Frontend: `tsc --noEmit`
+
+See `.github/workflows/ci.yml`.
+
+---
+
+## API Reference
+
+### `POST /api/generate`
+Start a generation job.
+
+```json
+{ "prompt": "Build a FastAPI todo API" }
 ```
+Returns: `{ "jobId": "uuid" }`
 
-Or interactively:
+### `GET /api/generate/{jobId}/stream`
+SSE stream of pipeline events:
 
-```bash
-uv run python main.py
-# Type your prompt and press Ctrl+D (or Ctrl+Z on Windows)
-```
+| Event | Data |
+|---|---|
+| `planner_start` | — |
+| `planner_done` | `{ projectName, features }` |
+| `architect_start` | — |
+| `architect_done` | `{ files: [{path, purpose}] }` |
+| `coder_start` | — |
+| `coder_file` | `{ file }` |
+| `done` | `{ projectName, totalFiles, filesGenerated }` |
+| `error` | `{ message }` |
+
+### `GET /api/projects`
+List all generated projects.
+
+### `GET /api/projects/{name}/files/{path}`
+Get file content from a generated project.
 
 ---
 
 ## Guardrails
 
-### Input Guardrail (on Planner)
-Runs before the pipeline starts. Blocks:
+### Input Guardrail
+Runs before the pipeline. Blocks:
 - Non-Python requests (`"build a React app"` → rejected)
 - Vague prompts (`"make something cool"` → rejected)
 - Dangerous/malicious requests (malware, exploits → rejected)
 
-### Output Guardrail (on Coder)
+### Output Guardrail
 Runs after code is generated. Rejects if any file contains:
 - `eval()`, `exec()`, `os.system()`, `subprocess` with `shell=True`
 - Missing `[tool.hatch.build.targets.wheel]` in `pyproject.toml`
@@ -169,37 +276,31 @@ Runs after code is generated. Rejects if any file contains:
 
 ## Generated Code Standards
 
-Every generated project follows the [python-code-style](https://github.com/openai/openai-agents-python) standard:
+Every generated project follows these standards:
 
 - **Type annotations** on every function and method
 - **Google-style docstrings** on all public APIs
 - **120 character** line length
-- **Absolute imports** only (`from my_project.utils import X`)
-- **SCREAMING_SNAKE_CASE** constants, **PascalCase** classes, **snake_case** functions
-- **ruff** for linting + formatting (replaces flake8, black, isort)
-- **mypy strict** mode enabled
+- **Absolute imports** only
+- **ruff** for linting + formatting
+- **mypy strict** mode
 - **pytest** with at least 2–3 test cases per module
 
 ---
 
-## Development
+## Environment Variables
 
-```bash
-# Test agents without writing files
-uv run python test_agents.py
+| Variable | Required | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | Yes | Gemini API key for all agents |
+| `MODEL_NAME` | No | Model name (default: `gemini-2.0-flash-lite`) |
+| `OPENAI_API_KEY` | No | OpenAI key for tracing only |
 
-# Run the full pipeline
-uv run python main.py "your prompt here"
+Frontend (`ui/.env.local`):
 
-# Lint
-uv run ruff check .
-
-# Type check
-uv run mypy .
-
-# Tests
-uv run pytest
-```
+| Variable | Required | Description |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL` | Yes | Backend URL (e.g. `http://localhost:8000`) |
 
 ---
 
@@ -209,17 +310,7 @@ Agent runs are traced via OpenAI's tracing platform. View spans, token usage, an
 
 **[platform.openai.com/traces](https://platform.openai.com/traces)**
 
-Requires `OPENAI_API_KEY` in your `.env`.
-
----
-
-## Environment Variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `GEMINI_API_KEY` | Yes | Gemini API key for all agents |
-| `MODEL_NAME` | No | Model name (default: `gemini-3.1-flash-lite`) |
-| `OPENAI_API_KEY` | No | OpenAI key for tracing only |
+Requires `OPENAI_API_KEY` in `.env`.
 
 ---
 
